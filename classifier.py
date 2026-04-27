@@ -25,17 +25,15 @@ CATEGORY_ICONS = {
     "General Inquiry": "💬 General Inquiry"
 }
 
-# ----------------------------
-# Only these 3 messages
-# ----------------------------
-ALL_MESSAGES = [
+# 3 default sample messages
+DEFAULT_MESSAGES = [
     "My payment got deducted but service is not activated",
     "App crashes every time I login",
     "How to change my email address?"
 ]
 
 
-def classify_message(message):#Promt Engineering , tell Ai about the messages
+def classify_message(message):
     prompt = f"""You are a support ticket classifier.
 Classify the given message into:
 - Category: Billing, Technical Issue, Account, General Inquiry
@@ -47,27 +45,25 @@ Return ONLY valid JSON in this exact format with no extra text:
   "priority": ""
 }}
 
-#sends user message to Groq model 
-Message: "{message}" 
+Message: "{message}"
 """
     try:
         response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
+            model="llama3-8b-8192",
             messages=[{"role": "user", "content": prompt}],
             temperature=0
         )
         raw = response.choices[0].message.content.strip()
-        result = json.loads(raw)#converts string to dictionary
+        result = json.loads(raw)
         return {
             "message": message,
             "category": result.get("category", "Unknown"),
             "priority": result.get("priority", "Unknown"),
             "status": "success"
         }
-    except json.JSONDecodeError:#if ai return
+    except json.JSONDecodeError:
         return {"message": message, "category": "Error", "priority": "Error", "status": "error", "note": "AI returned invalid JSON"}
-    except Exception as e:#General errors
-        #handles API failures,No internet, invalid keys
+    except Exception as e:
         return {"message": message, "category": "Error", "priority": "Error", "status": "error", "note": str(e)}
 
 
@@ -76,49 +72,90 @@ def print_header():
     print("   🎫  SUPPORT TICKET CLASSIFIER")
     print("=" * 60)
 
-#shows Menu
-def show_menu():
-    print("\n   📋  Choose a message to classify:\n")
-    for i, msg in enumerate(ALL_MESSAGES, start=1):
-        print(f"   [{i}]  {msg}")
-    print(f"\n   [A]  Classify ALL messages")
-    print(f"   [Q]  Quit")
+
+def show_main_menu():
+    print("\n   📋  How would you like to input messages?\n")
+    print("   [1]  Type messages separated by commas")
+    print("   [2]  Use the 3 default sample messages")
+    print("   [Q]  Quit")
     print("\n" + "=" * 60)
 
 
-def get_user_selection():
+def get_custom_messages():
+    print("\n   📝  Enter your messages separated by commas.")
+    print("   Example: My payment failed, App crashes, How to reset password\n")
+
     while True:
+        raw = input("  👉 Your messages: ").strip()
+
+        if not raw:
+            print("  ⚠️  Please enter at least one message.\n")
+            continue
+
+        messages = [msg.strip() for msg in raw.split(",") if msg.strip()]
+
+        if len(messages) == 0:
+            print("  ⚠️  No valid messages found. Try again.\n")
+            continue
+
+        print(f"\n  ✅ {len(messages)} message(s) accepted.\n")
+        return messages
+
+
+def show_default_menu():
+    print("\n   📋  Select from default messages:\n")
+    for i, msg in enumerate(DEFAULT_MESSAGES, start=1):
+        print(f"   [{i}]  {msg}")
+    print(f"\n   [A]  Classify ALL 3 messages")
+    print(f"   [B]  Go back")
+    print("\n" + "=" * 60)
+
+    while True:
+        raw = input("\n  👉 Enter your choice (1, 2, 3 or A or B): ").strip().upper()
+
+        if raw == "B":
+            return None  # go back to main menu
+
+        if raw == "A":
+            print(f"\n  ✅ All 3 messages selected.\n")
+            return DEFAULT_MESSAGES
+
         try:
-            raw = input("\n  👉 Enter your choice (1, 2, 3 or A or Q): ").strip().upper()
-
-            if raw == "Q":
-                print("\n  👋 Goodbye!\n")
-                exit()
-
-            if raw == "A":
-                print(f"\n  ✅ All {len(ALL_MESSAGES)} messages selected.\n")
-                return ALL_MESSAGES
-
-            # Allow comma-separated choices like "1,2"
-            choices = [int(x.strip()) for x in raw.split(",") if x.strip().isdigit()]
-            invalid = [c for c in choices if c < 1 or c > len(ALL_MESSAGES)]
-
-            if not choices:
-                print("  ⚠️  Invalid input. Enter 1, 2, 3 or A for all or Q to quit.")
-                continue
+            choices = [int(x.strip()) for x in raw.split(",")]
+            invalid = [c for c in choices if c < 1 or c > len(DEFAULT_MESSAGES)]
 
             if invalid:
                 print(f"  ⚠️  Invalid choice(s): {invalid}. Please enter 1, 2, or 3 only.")
                 continue
 
-            selected = [ALL_MESSAGES[c - 1] for c in choices]
+            selected = [DEFAULT_MESSAGES[c - 1] for c in choices]
             print(f"\n  ✅ {len(selected)} message(s) selected.\n")
             return selected
 
         except ValueError:
-            print("  ⚠️  Invalid input. Enter 1, 2, 3 or A for all or Q to quit.")
-        except EOFError:
+            print("  ⚠️  Invalid input. Enter 1, 2, 3 or A for all or B to go back.")
+
+
+def get_user_selection():
+    while True:
+        show_main_menu()
+        choice = input("\n  👉 Enter your choice (1, 2 or Q): ").strip().upper()
+
+        if choice == "Q":
+            print("\n  👋 Goodbye!\n")
             exit()
+
+        elif choice == "1":
+            return get_custom_messages()
+
+        elif choice == "2":
+            result = show_default_menu()
+            if result is not None:
+                return result
+            # if None, loop back to main menu
+
+        else:
+            print("  ⚠️  Invalid choice. Please enter 1, 2, or Q.")
 
 
 def print_result(result, index):
@@ -138,7 +175,7 @@ def print_result(result, index):
         print(f"       Status   : ✅ Classified successfully")
     print()
 
-#counts high,medium,low and errors
+
 def print_summary(results):
     high   = sum(1 for r in results if r.get("priority") == "High")
     medium = sum(1 for r in results if r.get("priority") == "Medium")
@@ -156,7 +193,7 @@ def print_summary(results):
     print(f"   ✅ Total processed  : {len(results)}")
     print("=" * 60)
 
-#
+
 def classify_all(messages):
     results = []
     print("=" * 60)
@@ -175,16 +212,12 @@ def classify_all(messages):
 
 if __name__ == "__main__":
     print_header()
-    
+
     while True:
-        show_menu()
         selected_messages = get_user_selection()
-        
         results = classify_all(selected_messages)
         print_summary(results)
 
-        # Append to output.json instead of overwriting completely if you prefer, 
-        # but the prompt version overwrites with the latest session.
         clean_output = [
             {"message": r["message"], "category": r["category"], "priority": r["priority"]}
             for r in results
@@ -192,5 +225,5 @@ if __name__ == "__main__":
         with open("output.json", "w") as f:
             json.dump(clean_output, f, indent=2)
 
-        print(f"\n   💾 Latest session saved to output.json")
+        print(f"\n   💾 Results saved to output.json")
         input("\n   ⌨️  Press Enter to return to menu...")
